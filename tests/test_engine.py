@@ -3,6 +3,7 @@ import numpy as np
 from scipy.optimize import linprog
 from engine.models import LPProblem
 from engine.standard import StandardSimplex
+from engine.two_phase import TwoPhaseSimplex
 
 class TestStandardSimplex(unittest.TestCase):
 
@@ -128,6 +129,70 @@ class TestStandardSimplex(unittest.TestCase):
         self.assertAlmostEqual(result['solution']['x1'], scipy_res.x[0])
         self.assertAlmostEqual(result['solution']['x2'], scipy_res.x[1])
         self.assertAlmostEqual(result['solution']['x3'], scipy_res.x[2])
+
+
+class TestTwoPhaseSimplex(unittest.TestCase):
+
+    def test_greater_than_constraints(self):
+        """Validates a problem requiring Phase 1 surplus and artificial variables."""
+        # Minimize Z = 2x1 + 3x2
+        # s.t. x1 + x2 >= 4; 2x1 + x2 >= 5
+        c = [2.0, 3.0]
+        A = [[1.0, 1.0], [2.0, 1.0]]
+        b = [4.0, 5.0]
+        restrictions = ['>=0', '>=0']
+        
+        problem = LPProblem(c, A, b, ['>=', '>='], restrictions, is_maximization=False)
+        solver = TwoPhaseSimplex(problem)
+        result = solver.solve()
+
+        # Oracle validation (SciPy requires <= for upper bounds, so we multiply by -1)
+        scipy_res = linprog(c, A_ub=[[-1.0, -1.0], [-2.0, -1.0]], b_ub=[-4.0, -5.0], method='highs')
+
+        self.assertEqual(result['status'], 'optimal')
+        self.assertAlmostEqual(result['z'], scipy_res.fun)
+        self.assertAlmostEqual(result['solution']['x1'], scipy_res.x[0])
+        self.assertAlmostEqual(result['solution']['x2'], scipy_res.x[1])
+
+    def test_equality_constraints(self):
+        """Validates a problem with equality constraints (artificial variables only)."""
+        # Maximize Z = 3x1 + x2
+        # s.t. x1 + x2 = 3; x1 <= 2
+        c = [3.0, 1.0]
+        A = [[1.0, 1.0], [1.0, 0.0]]
+        b = [3.0, 2.0]
+        restrictions = ['>=0', '>=0']
+        
+        problem = LPProblem(c, A, b, ['=', '<='], restrictions, is_maximization=True)
+        solver = TwoPhaseSimplex(problem)
+        result = solver.solve()
+
+        # Oracle validation (SciPy minimizes by default, so negate objective)
+        scipy_res = linprog([-3.0, -1.0], A_eq=[[1.0, 1.0]], b_eq=[3.0], A_ub=[[1.0, 0.0]], b_ub=[2.0], method='highs')
+
+        self.assertEqual(result['status'], 'optimal')
+        self.assertAlmostEqual(result['z'], -scipy_res.fun)
+        self.assertAlmostEqual(result['solution']['x1'], scipy_res.x[0])
+        self.assertAlmostEqual(result['solution']['x2'], scipy_res.x[1])
+
+    def test_infeasible_problem(self):
+        """Ensures Phase 1 correctly identifies an infeasible problem (artificials > 0)."""
+        # Maximize Z = x1 + x2
+        # s.t. x1 + x2 <= 2; x1 + x2 >= 4  (Logically impossible)
+        c = [1.0, 1.0]
+        A = [[1.0, 1.0], [1.0, 1.0]]
+        b = [2.0, 4.0]
+        restrictions = ['>=0', '>=0']
+        
+        problem = LPProblem(c, A, b, ['<=', '>='], restrictions, is_maximization=True)
+        solver = TwoPhaseSimplex(problem)
+        result = solver.solve()
+
+        # If Phase 1 finishes and Max Z* < 0, the solver should return 'infeasible'
+        self.assertEqual(result['status'], 'infeasible')
+        self.assertIsNone(result['solution'])
+
+
 
 if __name__ == '__main__':
     unittest.main()
