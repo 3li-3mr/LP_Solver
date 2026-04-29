@@ -73,7 +73,6 @@ class TwoPhaseSimplex(StandardSimplex):
 
         self.problem.var_names.extend(var_names_extension)
 
-        # Assemble the matrices horizontally — single extra_cols list keeps column order consistent
         matrix_blocks = [self.problem.A]
         if extra_cols:
             matrix_blocks.append(np.column_stack(extra_cols))
@@ -87,20 +86,20 @@ class TwoPhaseSimplex(StandardSimplex):
 
         self.tableau = np.vstack((A_augmented, obj_row))
 
-        # INITIALIZE Z-ROW: Zero out artificial variables sitting in the basis
+        # INITIALIZE Z-ROW: making artificial variables sitting in the basis have zero
         for row_idx, basic_col in enumerate(self.basic_vars):
             if basic_col in self.artificial_cols:
                 multiplier = self.tableau[-1, basic_col]
                 self.tableau[-1, :] -= multiplier * self.tableau[row_idx, :]
 
     def _snapshot(self, step_num: int) -> pd.DataFrame:
-        """Captures the current tableau state as a labeled DataFrame."""
+        #Captures the current tableau state as a labeled DataFrame.
         return self._extract_iteration_state(step_num)
 
     def _run_simplex_loop(self, history: list = None, phase_label: str = '') -> str:
         """
         Runs the simplex loop.  When `history` is provided the method appends
-        a DataFrame snapshot after every pivot (matching StandardSimplex format).
+        a DataFrame snapshot after every pivot (matching StandardSimplex format)
         """
         step = 0
         if history is not None:
@@ -121,17 +120,17 @@ class TwoPhaseSimplex(StandardSimplex):
                 self._phase_labels.append(phase_label)
 
     def _transition_to_phase_two(self) -> str:
-        """Strips artificial columns, restores original objective, and re-initializes."""
-        # 1. Feasibility Check: If Max Z* is less than 0, artificials are trapped in basis.
+        """Cut out artificial columns, restore original objective, and re-initialize"""
+        # 1. Feasibility Check: If Max Z* is less than 0, not feasible.
         if round(self.tableau[-1, -1], 5) < 0:
             return 'infeasible'
 
-        # 2. Drop artificial columns from the matrix
+        # 2. Cut out artificial columns from the matrix
         self.tableau = np.delete(self.tableau, self.artificial_cols, axis=1)
 
         # Update variable names list
-        self.problem.var_names = [name for i, name in enumerate(self.problem.var_names) if
-                                  i not in self.artificial_cols]
+        self.problem.var_names = [name for i, name in enumerate(self.problem.var_names) 
+                                    if i not in self.artificial_cols]
 
         # Update basic_vars tracking indices (since deleting columns shifted everything left)
         new_basic_vars = []
@@ -162,10 +161,8 @@ class TwoPhaseSimplex(StandardSimplex):
         return 'ready'
 
     def solve(self) -> dict:
-        """Orchestrates Phase 1 and Phase 2 returning standard dictionary format."""
         history = []
         self._phase_labels = []
-
         # Inherited from StandardSimplex! Converts unrestricted into x+ and x-
         self._handle_unrestricted_variables()
 
@@ -190,7 +187,6 @@ class TwoPhaseSimplex(StandardSimplex):
             return {'status': 'unbounded', 'solution': None, 'z': None, 'history': history,
                     'phase_labels': self._phase_labels}
 
-        # Inherited from StandardSimplex! Recombines x+ and x-
         sol = self._extract_solution()
         z = self.tableau[-1, -1]
 
