@@ -263,14 +263,20 @@ class SolverThread(QThread):
 #  MATRIX INPUT TABLE
 # ══════════════════════════════════════════════════════════
 class MatrixTable(QTableWidget):
+    MIN_COL_WIDTH = 72
+
     def __init__(self, rows: int, cols: int):
         super().__init__(rows, cols)
         self.setObjectName("inputTable")
-        self.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        self.horizontalHeader().setMinimumSectionSize(self.MIN_COL_WIDTH)
+        self.horizontalHeader().setDefaultSectionSize(self.MIN_COL_WIDTH)
         self.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
         self.verticalHeader().setDefaultSectionSize(32)
         self.setAlternatingRowColors(False)
         self.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self._fill_zeros()
 
     def _fill_zeros(self):
@@ -319,11 +325,15 @@ class ConstraintTable(QTableWidget):
         self.setObjectName("constraintTable")
         self.n_vars = n_vars
         self.n_cons = n_cons
-        self.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        self.horizontalHeader().setMinimumSectionSize(72)
+        self.horizontalHeader().setDefaultSectionSize(80)
         self.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
         self.verticalHeader().setDefaultSectionSize(34)
         self.setAlternatingRowColors(False)
         self.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self._rebuild_headers()
         self._populate()
 
@@ -562,7 +572,19 @@ class InputPanel(QWidget):
 
         # ── Restrictions ──
         grp_rest = QGroupBox("Variable Restrictions")
-        self._rest_lay = QHBoxLayout(grp_rest)
+        grp_rest_outer = QVBoxLayout(grp_rest)
+        grp_rest_outer.setContentsMargins(4, 4, 4, 4)
+
+        rest_scroll = QScrollArea()
+        rest_scroll.setWidgetResizable(True)
+        rest_scroll.setFrameShape(QFrame.NoFrame)
+        rest_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        rest_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        rest_scroll.setFixedHeight(80)
+
+        rest_inner = QWidget()
+        self._rest_lay = QHBoxLayout(rest_inner)
+        self._rest_lay.setContentsMargins(4, 4, 4, 4)
         self._rest_lay.setSpacing(10)
         self._rest_combos = []
         for i in range(self.n_vars):
@@ -575,6 +597,9 @@ class InputPanel(QWidget):
             self._rest_lay.addWidget(w)
             self._rest_combos.append(cb)
         self._rest_lay.addStretch()
+
+        rest_scroll.setWidget(rest_inner)
+        grp_rest_outer.addWidget(rest_scroll)
         self._lay.addWidget(grp_rest)
 
         self._lay.addStretch()
@@ -606,7 +631,7 @@ class InputPanel(QWidget):
             lbl.setStyleSheet("font-weight:600; font-size:11px; color:#374151;")
             cb = QComboBox(); cb.addItems(["≥ 0", "Unrestricted"])
             col.addWidget(lbl); col.addWidget(cb)
-            w = QWidget(); w.setLayout(col)
+            w = QWidget(); w.setLayout(col); w.setFixedWidth(100)
             self._rest_lay.addWidget(w)
             self._rest_combos.append(cb)
         self._rest_lay.addStretch()
