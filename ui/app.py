@@ -367,20 +367,25 @@ class ConstraintTable(QTableWidget):
 
     # ── Public API ────────────────────────────────────────
     def resize_to(self, n_cons: int, n_vars: int):
+        old_type_col = self.n_vars      # type column index BEFORE resize
         self.n_cons = n_cons
         self.n_vars = n_vars
         self.setRowCount(n_cons)
         self.setColumnCount(n_vars + 2)
         self._rebuild_headers()
         for r in range(n_cons):
-            # Coefficients
+            # Coefficient cells
             for c in range(n_vars):
                 if self.item(r, c) is None:
                     self._set_cell(r, c, "0")
-            # Type combo (always re-insert to fix column shift)
-            if self.cellWidget(r, self._type_col()) is None:
-                self._insert_combo(r)
-            # RHS
+            # Always re-insert combo in the (possibly shifted) Type column.
+            # removeCellWidget on both old and new column positions to avoid
+            # a stale widget occupying the wrong column after n_vars changes.
+            old_widget = self.cellWidget(r, old_type_col)
+            if old_widget is not None:
+                self.removeCellWidget(r, old_type_col)
+            self._insert_combo(r)
+            # RHS cell
             if self.item(r, self._rhs_col()) is None:
                 self._set_cell(r, self._rhs_col(), "0")
 
@@ -730,6 +735,9 @@ class ResultPanel(QWidget):
         # Iteration tabs — placed last, filling the bottom of the panel
         self._tabs.clear()
         has_phases = any(lbl for lbl in labels)
+        self._phase_legend.setText(
+            "🟡 Phase 1  |  🟢 Phase 2" if has_phases else ""
+        )
 
         for i, df in enumerate(history):
             tab = QWidget()
