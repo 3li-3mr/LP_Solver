@@ -1,4 +1,3 @@
-
 """
 LP Solver — PySide6 GUI
 Supports: Standard Simplex | Two-Phase Simplex
@@ -126,6 +125,21 @@ QComboBox QAbstractItemView {
 }
 #inputTable::item { padding: 3px 6px; }
 #inputTable::item:selected { background: #EEF4FF; color: #1D56C4; }
+/* ── Merged constraint table ── */
+#constraintTable {
+    background: #FFFFFF; border: 1px solid #E3E7EF;
+    border-radius: 6px; gridline-color: #E3E7EF;
+}
+#constraintTable QHeaderView::section {
+    background: #F0F4FA; color: #4B5563;
+    font-weight: 600; font-size: 11px;
+    border: none;
+    border-right: 1px solid #E3E7EF;
+    border-bottom: 1px solid #E3E7EF;
+    padding: 5px 8px;
+}
+#constraintTable::item { padding: 3px 6px; }
+#constraintTable::item:selected { background: #EEF4FF; color: #1D56C4; }
 /* ── Result tableau ── */
 #tableau {
     background: #FFFFFF; border: 1px solid #E3E7EF;
@@ -288,6 +302,114 @@ class MatrixTable(QTableWidget):
 
 
 # ══════════════════════════════════════════════════════════
+#  MERGED CONSTRAINT TABLE
+#  Columns: x1, x2, ..., xN, Type (combo), RHS
+# ══════════════════════════════════════════════════════════
+class ConstraintTable(QTableWidget):
+    """
+    A single unified table where each row is one constraint.
+    Columns = [x1 ... xN | Type | b]
+    The 'Type' column embeds a QComboBox; the coefficient and RHS
+    columns are plain editable cells.
+    """
+    TYPE_OPTIONS = ["<=", ">=", "="]
+
+    def __init__(self, n_cons: int, n_vars: int):
+        super().__init__(n_cons, n_vars + 2)   # +2 for Type & RHS
+        self.setObjectName("constraintTable")
+        self.n_vars = n_vars
+        self.n_cons = n_cons
+        self.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
+        self.verticalHeader().setDefaultSectionSize(34)
+        self.setAlternatingRowColors(False)
+        self.setSelectionMode(QAbstractItemView.SingleSelection)
+        self._rebuild_headers()
+        self._populate()
+
+    # ── Internal ──────────────────────────────────────────
+    def _rebuild_headers(self):
+        hdrs = [f"x{i+1}" for i in range(self.n_vars)] + ["Type", "b (RHS)"]
+        self.setHorizontalHeaderLabels(hdrs)
+        self.setVerticalHeaderLabels([f"C{i+1}" for i in range(self.n_cons)])
+
+    def _type_col(self) -> int:
+        return self.n_vars          # index of Type column
+
+    def _rhs_col(self) -> int:
+        return self.n_vars + 1      # index of RHS column
+
+    def _populate(self):
+        """Fill all cells with defaults; embed combos in Type column."""
+        for r in range(self.n_cons):
+            # Coefficient cells
+            for c in range(self.n_vars):
+                self._set_cell(r, c, "0")
+            # Type combo
+            self._insert_combo(r)
+            # RHS cell
+            self._set_cell(r, self._rhs_col(), "0")
+
+    def _set_cell(self, r: int, c: int, text: str = "0"):
+        item = QTableWidgetItem(text)
+        item.setTextAlignment(Qt.AlignCenter)
+        self.setItem(r, c, item)
+
+    def _insert_combo(self, r: int):
+        cb = QComboBox()
+        cb.addItems(self.TYPE_OPTIONS)
+        cb.setStyleSheet(
+            "QComboBox { border: none; background: transparent; "
+            "font-size: 13px; font-weight: 600; color: #1D56C4; }"
+            "QComboBox::drop-down { border: none; width: 18px; }"
+        )
+        self.setCellWidget(r, self._type_col(), cb)
+
+    # ── Public API ────────────────────────────────────────
+    def resize_to(self, n_cons: int, n_vars: int):
+        self.n_cons = n_cons
+        self.n_vars = n_vars
+        self.setRowCount(n_cons)
+        self.setColumnCount(n_vars + 2)
+        self._rebuild_headers()
+        for r in range(n_cons):
+            # Coefficients
+            for c in range(n_vars):
+                if self.item(r, c) is None:
+                    self._set_cell(r, c, "0")
+            # Type combo (always re-insert to fix column shift)
+            if self.cellWidget(r, self._type_col()) is None:
+                self._insert_combo(r)
+            # RHS
+            if self.item(r, self._rhs_col()) is None:
+                self._set_cell(r, self._rhs_col(), "0")
+
+    def get_A(self) -> list[list[float]]:
+        rows = []
+        for r in range(self.n_cons):
+            row = []
+            for c in range(self.n_vars):
+                try:    row.append(float(self.item(r, c).text()))
+                except: row.append(0.0)
+            rows.append(row)
+        return rows
+
+    def get_types(self) -> list[str]:
+        out = []
+        for r in range(self.n_cons):
+            cb = self.cellWidget(r, self._type_col())
+            out.append(cb.currentText() if cb else "<=")
+        return out
+
+    def get_b(self) -> list[float]:
+        out = []
+        for r in range(self.n_cons):
+            try:    out.append(float(self.item(r, self._rhs_col()).text()))
+            except: out.append(0.0)
+        return out
+
+
+# ══════════════════════════════════════════════════════════
 #  TABLEAU DISPLAY WIDGET
 # ══════════════════════════════════════════════════════════
 class TableauView(QTableWidget):
@@ -313,7 +435,6 @@ class TableauView(QTableWidget):
                 item.setTextAlignment(Qt.AlignCenter)
                 is_obj_row = (r == n_rows - 1)
                 is_rhs_col = (c == n_cols - 1)
-                # Reset colors first
                 item.setForeground(QColor("#1F2937"))
                 item.setBackground(QColor("#FFFFFF"))
                 if is_obj_row:
@@ -321,9 +442,7 @@ class TableauView(QTableWidget):
                     item.setForeground(QColor("#1E40AF"))
                 if is_rhs_col:
                     item.setForeground(QColor("#059669"))
-                    f = item.font();
-                    f.setBold(True);
-                    item.setFont(f)
+                    f = item.font(); f.setBold(True); item.setFont(f)
                 self.setItem(r, c, item)
 
 
@@ -340,7 +459,6 @@ class Sidebar(QWidget):
         lay.setContentsMargins(16, 16, 16, 16)
         lay.setSpacing(14)
 
-        # Title
         t = QLabel("Configuration"); t.setObjectName("sideTitle")
         lay.addWidget(t)
         lay.addWidget(divider())
@@ -377,7 +495,6 @@ class Sidebar(QWidget):
         self.var_sp.valueChanged.connect(self.changed)
         self.con_sp.valueChanged.connect(self.changed)
 
-        # Hint label for two-phase
         self.hint = QLabel("💡 Two-Phase handles ≥ and = constraints.")
         self.hint.setWordWrap(True)
         self.hint.setStyleSheet("font-size:11px; color:#6B7280; margin-top:4px;")
@@ -405,7 +522,6 @@ class InputPanel(QWidget):
         super().__init__()
         self.n_vars = 2
         self.n_cons = 3
-        self._type_combos: list[QComboBox] = []
         self._rest_combos: list[QComboBox] = []
         self._build()
 
@@ -432,35 +548,11 @@ class InputPanel(QWidget):
         gl.addWidget(self._obj)
         self._lay.addWidget(grp_obj)
 
-        # ── Constraints ──
-        grp_con = QGroupBox("Constraint Matrix  [A | type | b]")
+        # ── Constraints (merged: A | Type | b) ──
+        grp_con = QGroupBox("Constraints  [x₁ … xₙ | Type | b]")
         gcl = QVBoxLayout(grp_con)
-        self._A = MatrixTable(self.n_cons, self.n_vars)
-        self._A.setVerticalHeaderLabels([f"C{i+1}" for i in range(self.n_cons)])
-        self._A.setHorizontalHeaderLabels([f"x{i+1}" for i in range(self.n_vars)])
-        gcl.addWidget(self._A)
-
-        meta = QHBoxLayout(); meta.setSpacing(10)
-
-        # Types
-        grp_type = QGroupBox("Type")
-        self._type_lay = QVBoxLayout(grp_type)
-        self._type_lay.setSpacing(4)
-        self._type_combos = []
-        for _ in range(self.n_cons):
-            cb = QComboBox(); cb.addItems(["<=", ">=", "="]); cb.setFixedWidth(75)
-            self._type_lay.addWidget(cb); self._type_combos.append(cb)
-        meta.addWidget(grp_type)
-
-        # RHS
-        grp_rhs = QGroupBox("RHS  (b)")
-        rhs_l = QVBoxLayout(grp_rhs)
-        self._rhs = MatrixTable(self.n_cons, 1)
-        self._rhs.setHorizontalHeaderLabels(["b"])
-        rhs_l.addWidget(self._rhs)
-        meta.addWidget(grp_rhs, 1)
-
-        gcl.addLayout(meta)
+        self._con_table = ConstraintTable(self.n_cons, self.n_vars)
+        gcl.addWidget(self._con_table)
         self._lay.addWidget(grp_con)
 
         # ── Restrictions ──
@@ -493,27 +585,13 @@ class InputPanel(QWidget):
         self._obj.resize_to(1, n_vars)
         self._obj.setHorizontalHeaderLabels([f"x{i+1}" for i in range(n_vars)])
 
-        # A matrix
-        self._A.resize_to(n_cons, n_vars)
-        self._A.setHorizontalHeaderLabels([f"x{i+1}" for i in range(n_vars)])
-        self._A.setVerticalHeaderLabels([f"C{i+1}" for i in range(n_cons)])
-
-        # RHS
-        self._rhs.resize_to(n_cons, 1)
-
-        # Type combos
-        for cb in self._type_combos: cb.setParent(None); cb.deleteLater()
-        self._type_combos.clear()
-        while self._type_lay.count():
-            self._type_lay.takeAt(0)
-        for _ in range(n_cons):
-            cb = QComboBox(); cb.addItems(["<=", ">=", "="]); cb.setFixedWidth(75)
-            self._type_lay.addWidget(cb); self._type_combos.append(cb)
+        # Merged constraint table
+        self._con_table.resize_to(n_cons, n_vars)
 
         # Restriction combos
-        for cb in self._rest_combos: cb.setParent(None); cb.deleteLater()
+        for cb in self._rest_combos:
+            cb.setParent(None); cb.deleteLater()
         self._rest_combos.clear()
-        # remove all items from rest layout
         while self._rest_lay.count():
             item = self._rest_lay.takeAt(0)
             if item.widget(): item.widget().deleteLater()
@@ -532,9 +610,9 @@ class InputPanel(QWidget):
     def get_data(self) -> dict:
         return {
             'c':    self._obj.get_row(0),
-            'A':    self._A.get_all(),
-            'b':    [self._rhs.get_row(r)[0] for r in range(self.n_cons)],
-            'types': [cb.currentText() for cb in self._type_combos] or ["<="] * self.n_cons,
+            'A':    self._con_table.get_A(),
+            'b':    self._con_table.get_b(),
+            'types': self._con_table.get_types(),
             'restrictions': [
                 ">=0" if cb.currentIndex() == 0 else "unrestricted"
                 for cb in self._rest_combos
@@ -590,7 +668,7 @@ class ResultPanel(QWidget):
         self._var_lay = QHBoxLayout(var_frame); self._var_lay.setSpacing(10)
         rl.addWidget(var_frame)
 
-        # Iterations
+        # ── Iterations block (at the bottom) ──
         iter_hdr = QHBoxLayout()
         iter_hdr.addWidget(sec_label("Simplex Iterations"))
         self._phase_legend = QLabel("")
@@ -601,7 +679,7 @@ class ResultPanel(QWidget):
 
         self._tabs = QTabWidget()
         self._tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        rl.addWidget(self._tabs)
+        rl.addWidget(self._tabs, 1)          # stretch=1 → fills remaining space
 
         self.stack.addWidget(res)            # index 1
         lay.addWidget(self.stack)
@@ -617,7 +695,7 @@ class ResultPanel(QWidget):
         history = result.get('history') or []
         labels  = result.get('phase_labels') or [''] * len(history)
 
-        # Filter out internal variables (surplus e, artificial a, slack s)
+        # Filter internal variables
         display_sol = {k: v for k, v in sol.items()
                        if not (k.startswith('e') or k.startswith('a') or k.startswith('s'))}
 
@@ -649,7 +727,7 @@ class ResultPanel(QWidget):
             self._var_lay.addWidget(chip)
         self._var_lay.addStretch()
 
-        # Iteration tabs
+        # Iteration tabs — placed last, filling the bottom of the panel
         self._tabs.clear()
         has_phases = any(lbl for lbl in labels)
         self._phase_legend.setText(
@@ -662,7 +740,6 @@ class ResultPanel(QWidget):
             tl.addWidget(TableauView(df))
             self._tabs.addTab(tab, f"Iter {i}" if i > 0 else "Initial")
 
-            # Color-code tab by phase
             if has_phases and i < len(labels):
                 ph = labels[i]
                 color = "#F59E0B" if ph == "Phase 1" else "#10B981"
@@ -783,7 +860,7 @@ def main():
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     app.setStyleSheet(STYLE)
-    window = MainWindow()  # ← assign to variable, not anonymous
+    window = MainWindow()
     window.show()
     window.raise_()
     window.activateWindow()
