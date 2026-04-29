@@ -1,9 +1,4 @@
-# import os; os.environ["QT_QPA_PLATFORM"] = "xcb"
-# import os; os.environ["QT_QPA_PLATFORM"] = "xcb"
-import os
-os.environ["QT_QPA_PLATFORM"] = "wayland"
-os.environ["XDG_SESSION_TYPE"] = "wayland"
-os.environ["WAYLAND_DISPLAY"] = "wayland-0"
+
 """
 LP Solver — PySide6 GUI
 Supports: Standard Simplex | Two-Phase Simplex
