@@ -730,9 +730,6 @@ class ResultPanel(QWidget):
         # Iteration tabs — placed last, filling the bottom of the panel
         self._tabs.clear()
         has_phases = any(lbl for lbl in labels)
-        self._phase_legend.setText(
-            "🟡 Phase 1  |  🟢 Phase 2" if has_phases else ""
-        )
 
         for i, df in enumerate(history):
             tab = QWidget()
